@@ -50,18 +50,24 @@ This project demonstrates my ability to:
 
 
 📁 Project Structure
+
 Cloud-Share-App/
 ├── Backend/        # Spring Boot backend (APIs & file handling)
 └── Frontend/       # React frontend (UI & API integration)
 
 ▶️ How to Run the Project Locally
 Backend
+
 cd Backend
+
 mvn spring-boot:run
 
 Frontend
+
 cd Frontend
+
 npm install
+
 npm start
 
   🚧 Future Enhancements

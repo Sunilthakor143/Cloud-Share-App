@@ -4,7 +4,8 @@ Secure File Sharing Web Application
 Cloud Share App is a full-stack file sharing platform designed to securely upload, store, and share files using unique downloadable links.
 The project focuses on real-world backend architecture, REST APIs, and clean frontend integration, following industry-level best practices.
 
-🌟 Why This Project Matters
+🌟 Why This Project Matters.
+
 In real-world applications, secure file sharing is a core system design problem.
 This project demonstrates my ability to:
 

@@ -21,6 +21,8 @@ const DashboardUpload = ({ files, onFileChange, onUpload, uploading, onRemoveFil
                 }
             };
             onFileChange(mockEvent);
+
+
         }
     };
 

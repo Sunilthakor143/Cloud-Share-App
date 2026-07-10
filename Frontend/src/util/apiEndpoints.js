@@ -1,4 +1,4 @@
-const BASE_URL = "https://cloud-share-api-render.onrender.com/api/v1.0";
+const BASE_URL = "https://cloud-share-app-j2oe.onrender.com/api/v1.0";
 
 export const apiEndpoints = {
     FETCH_FILES: `${BASE_URL}/files/my`,
@@ -11,4 +11,4 @@ export const apiEndpoints = {
     VERIFY_PAYMENT: `${BASE_URL}/payments/verify-payment`,
     TRANSACTIONS: `${BASE_URL}/transactions`,
     PUBLIC_FILE_VIEW: (fileId) => `${BASE_URL}/files/public/${fileId}`
-}
+};

@@ -30,15 +30,15 @@ public class ClerkJwtAuthFilter extends OncePerRequestFilter {
 
     private final ClerkJwksProvider jwksProvider;
 
-
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
 
         // For webhook endpoints, skip JWT validation and continue the filter chain
         if (request.getRequestURI().contains("/webhooks") ||
                 request.getRequestURI().contains("/public") ||
-                    request.getRequestURI().contains("/download") ||
-                        request.getRequestURI().contains("/health")) {
+                request.getRequestURI().contains("/download") ||
+                request.getRequestURI().contains("/health")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -50,9 +50,14 @@ public class ClerkJwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        String token = null;
+
         try {
-            String token = authHeader.substring(7);
+
+            token = authHeader.substring(7);
+
             String[] chunks = token.split("\\.");
+
             if (chunks.length < 3) {
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid JWT token format");
                 return;
@@ -71,7 +76,7 @@ public class ClerkJwtAuthFilter extends OncePerRequestFilter {
 
             PublicKey publicKey = jwksProvider.getPublicKey(kid);
 
-            //verify the token
+            // verify the token
             Claims claims = Jwts.parserBuilder()
                     .setSigningKey(publicKey)
                     .setAllowedClockSkewSeconds(60)
@@ -82,14 +87,25 @@ public class ClerkJwtAuthFilter extends OncePerRequestFilter {
 
             String clerkId = claims.getSubject();
 
-            UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(clerkId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_ADMIN")));
+            UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(clerkId,
+                    null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_ADMIN")));
 
             SecurityContextHolder.getContext().setAuthentication(authenticationToken);
             filterChain.doFilter(request, response);
         } catch (Exception e) {
-            e.printStackTrace(); 
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid JWT token: "+e.getMessage());
-            return;
+
+            System.out.println("==================================");
+            System.out.println("JWT VALIDATION FAILED");
+            System.out.println("Request URI : " + request.getRequestURI());
+            System.out.println("Token : " + token);
+
+            e.printStackTrace();
+
+            System.out.println("Message : " + e.getMessage());
+            System.out.println("==================================");
+
+            response.sendError(HttpServletResponse.SC_FORBIDDEN,
+                    "Invalid JWT token: " + e.getMessage());
         }
 
     }

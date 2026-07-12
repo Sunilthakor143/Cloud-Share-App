@@ -47,7 +47,7 @@ const App = () => {
                             <SignedOut><RedirectToSignIn /></SignedOut>
                         </>
                     } />
-                    <Route path="file/:fileId" element={
+                    <Route path="/file/:fileId" element={
                         <>
                             <PublicFileView />
                         </>

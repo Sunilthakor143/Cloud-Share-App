@@ -44,7 +44,9 @@ const DashboardUpload = ({ files, onFileChange, onUpload, uploading, onRemoveFil
                     <h2 className="text-base font-medium">Upload Files</h2>
                 </div>
                 <div className="text-xs text-gray-500">
-                    {remainingUploads} of 5 files remaining
+                    {files.length > 0
+                        ? `${files.length} of 5 selected`
+                        : 'Select up to 5 files per upload'}
                 </div>
             </div>
 

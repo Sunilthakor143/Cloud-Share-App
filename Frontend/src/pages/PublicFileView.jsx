@@ -4,8 +4,150 @@ import {useAuth} from "@clerk/clerk-react";
 import axios from "axios";
 import {apiEndpoints} from "../util/apiEndpoints.js";
 import toast from "react-hot-toast";
-import {Copy, Download, File, Info, Share2} from "lucide-react";
+import {Copy, Download, File, FileText, Info, Music, Share2} from "lucide-react";
 import LinkShareModal from "../components/LinkShareModal.jsx";
+
+// Works out what kind of preview a file supports, from its MIME type first
+// (reliable, comes from the server) and falls back to the file extension.
+const getPreviewKind = (file) => {
+    const type = (file.type || "").toLowerCase();
+    const extension = (file.name || "").split(".").pop().toLowerCase();
+
+    if (type.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(extension)) {
+        return "image";
+    }
+    if (type.startsWith("video/") || ["mp4", "webm", "mov", "avi", "mkv"].includes(extension)) {
+        return "video";
+    }
+    if (type.startsWith("audio/") || ["mp3", "wav", "ogg", "flac", "m4a"].includes(extension)) {
+        return "audio";
+    }
+    if (type === "application/pdf" || extension === "pdf") {
+        return "pdf";
+    }
+    if (
+        type.startsWith("text/") ||
+        type === "application/json" ||
+        ["txt", "md", "csv", "log", "json", "js", "jsx", "ts", "tsx", "css", "html", "xml", "yml", "yaml"].includes(extension)
+    ) {
+        return "text";
+    }
+    return "unsupported";
+};
+
+// Small icon shown for file types that can't be previewed inline (docx, zip, etc.)
+const UnsupportedIcon = ({file}) => {
+    const extension = (file.name || "").split(".").pop().toLowerCase();
+
+    if (["doc", "docx", "rtf"].includes(extension)) {
+        return <FileText size={40} className="text-blue-500" />;
+    }
+    if (["xls", "xlsx", "csv"].includes(extension)) {
+        return <FileText size={40} className="text-green-600" />;
+    }
+    if (["ppt", "pptx"].includes(extension)) {
+        return <FileText size={40} className="text-orange-500" />;
+    }
+    return <File size={40} className="text-blue-500" />;
+};
+
+// Fetches small text files and renders their contents in a scrollable code block.
+const TextPreview = ({url}) => {
+    const [content, setContent] = useState(null);
+    const [failed, setFailed] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        axios.get(url, {responseType: "text", transformResponse: [(data) => data]})
+            .then((res) => {
+                if (!cancelled) setContent(res.data);
+            })
+            .catch(() => {
+                if (!cancelled) setFailed(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [url]);
+
+    if (failed) {
+        return (
+            <p className="text-sm text-gray-500">
+                Preview couldn't be loaded. Try downloading the file instead.
+            </p>
+        );
+    }
+
+    if (content === null) {
+        return <p className="text-sm text-gray-500">Loading preview…</p>;
+    }
+
+    return (
+        <pre className="w-full max-h-[500px] overflow-auto text-left text-xs bg-gray-50 border border-gray-200 rounded-lg p-4 whitespace-pre-wrap break-words">
+            {content.slice(0, 20000)}
+        </pre>
+    );
+};
+
+const FilePreview = ({file}) => {
+    const kind = getPreviewKind(file);
+
+    if (kind === "image") {
+        return (
+            <img
+                src={file.fileUrl}
+                alt={file.name}
+                className="max-h-[500px] w-auto max-w-full mx-auto rounded-lg border border-gray-200"
+            />
+        );
+    }
+
+    if (kind === "video") {
+        return (
+            <video
+                src={file.fileUrl}
+                controls
+                className="max-h-[500px] w-full mx-auto rounded-lg border border-gray-200 bg-black"
+            />
+        );
+    }
+
+    if (kind === "audio") {
+        return (
+            <div className="flex flex-col items-center gap-4 py-6">
+                <Music size={48} className="text-green-500" />
+                <audio src={file.fileUrl} controls className="w-full max-w-md" />
+            </div>
+        );
+    }
+
+    if (kind === "pdf") {
+        return (
+            <iframe
+                src={file.fileUrl}
+                title={file.name}
+                className="w-full h-[600px] rounded-lg border border-gray-200"
+            />
+        );
+    }
+
+    if (kind === "text") {
+        return <TextPreview url={file.fileUrl} />;
+    }
+
+    // Unsupported preview type - show a friendly placeholder instead of pretending
+    // there's a preview. The user can still download the file below.
+    return (
+        <div className="flex flex-col items-center gap-3 py-6">
+            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center">
+                <UnsupportedIcon file={file} />
+            </div>
+            <p className="text-sm text-gray-500">
+                Preview isn't available for this file type. Download it to view the contents.
+            </p>
+        </div>
+    );
+};
 
 const PublicFileView = () => {
     const [file, setFile] = useState(null);
@@ -22,7 +164,6 @@ const PublicFileView = () => {
         const getFile = async () => {
             setIsLoading(true);
             try {
-                // Re-added token fetching and authorization header
                 const res = await axios.get(
                     apiEndpoints.PUBLIC_FILE_VIEW(fileId)
                 );
@@ -42,7 +183,6 @@ const PublicFileView = () => {
 
     const handleDownload = async () => {
         try {
-            // This endpoint might also require a token depending on your backend setup
             const response = await axios.get(
                 apiEndpoints.DOWNLOAD_FILE(fileId),
                 {
@@ -53,11 +193,11 @@ const PublicFileView = () => {
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement("a");
             link.href = url;
-            link.setAttribute("download", file.name); // Use the actual file name
+            link.setAttribute("download", file.name);
             document.body.appendChild(link);
             link.click();
             link.remove();
-            window.URL.revokeObjectURL(url); // Clean up the object URL
+            window.URL.revokeObjectURL(url);
         } catch (err) {
             console.error("Download failed:", err);
             toast.error("Sorry, the file could not be downloaded.");
@@ -121,12 +261,6 @@ const PublicFileView = () => {
             <main className="container mx-auto p-4 md:p-8 flex justify-center">
                 <div className="w-full max-w-3xl">
                     <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center">
-                        <div className="flex justify-center mb-4">
-                            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center">
-                                <File size={40} className="text-blue-500" />
-                            </div>
-                        </div>
-
                         <h1 className="text-2xl font-semibold text-gray-800 break-words">
                             {file.name}
                         </h1>
@@ -140,6 +274,11 @@ const PublicFileView = () => {
               <span className="inline-block bg-gray-100 text-gray-600 text-xs font-medium px-3 py-1 rounded-full uppercase">
                 {file.type || "File"}
               </span>
+                        </div>
+
+                        {/* Actual file preview, tailored to the file type */}
+                        <div className="my-6">
+                            <FilePreview file={file} />
                         </div>
 
                         <div className="flex justify-center gap-4 my-8">

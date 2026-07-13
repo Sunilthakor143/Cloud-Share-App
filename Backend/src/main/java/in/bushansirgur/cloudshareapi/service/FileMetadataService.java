@@ -98,6 +98,13 @@ public class FileMetadataService {
     public FileMetadataDTO getDownloadableFile(String id) {
         FileMetadataDocument file = fileMetadataRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("File not found"));
+
+        if (file.getFileUrl() == null || file.getFileUrl().isBlank()) {
+            // This record predates the Cloudinary migration (or the upload never finished) -
+            // there is no actual file content to serve.
+            throw new RuntimeException("This file is no longer available for download. Please re-upload it.");
+        }
+
         return mapToDTO(file);
     }
 

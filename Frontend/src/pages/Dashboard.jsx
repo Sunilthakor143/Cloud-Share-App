@@ -1,8 +1,10 @@
 import DashboardLayout from "../layout/DashboardLayout.jsx";
 import {useAuth} from "@clerk/clerk-react";
 import {useContext, useEffect, useState} from "react";
+import {useNavigate} from "react-router-dom";
 import {UserCreditsContext} from "../context/UserCreditsContext.jsx";
 import axios from "axios";
+import toast from "react-hot-toast";
 import {apiEndpoints} from "../util/apiEndpoints.js";
 import {Loader2} from "lucide-react";
 import DashboardUpload from "../components/DashboardUpload.jsx";
@@ -17,7 +19,8 @@ const Dashboard = () => {
     const [messageType, setMessageType] = useState('');
     const [remainingUploads, setRemainingUploads] = useState(5);
     const {getToken} = useAuth();
-    const { fetchUserCredits } = useContext(UserCreditsContext);
+    const navigate = useNavigate();
+    const { credits, fetchUserCredits } = useContext(UserCreditsContext);
     const MAX_FILES = 5;
 
     useEffect(() => {
@@ -88,6 +91,19 @@ const Dashboard = () => {
             return;
         }
 
+        // Out of credits (or not enough for this many files) - don't even try the
+        // upload. Tell the user clearly and send them straight to the page where
+        // they can buy more credits.
+        if (credits <= 0 || uploadFiles.length > credits) {
+            toast.error(
+                credits <= 0
+                    ? "You're out of credits. Redirecting you to buy more..."
+                    : `You only have ${credits} credit${credits === 1 ? "" : "s"} left - not enough for ${uploadFiles.length} files. Redirecting...`
+            );
+            setTimeout(() => navigate('/subscriptions'), 1500);
+            return;
+        }
+
         setUploading(true);
         setMessage('Uploading files...');
         setMessageType('info');
@@ -126,8 +142,14 @@ const Dashboard = () => {
             await fetchUserCredits();
         } catch (error) {
             console.error('Error uploading files:', error);
-            setMessage(error.response?.data?.message || 'Error uploading files. Please try again.');
-            setMessageType('error');
+
+            if (error.response?.status === 400 && /credit/i.test(error.response?.data?.message || "")) {
+                toast.error("You're out of credits. Redirecting you to buy more...");
+                setTimeout(() => navigate('/subscriptions'), 1500);
+            } else {
+                setMessage(error.response?.data?.message || 'Error uploading files. Please try again.');
+                setMessageType('error');
+            }
         } finally {
             setUploading(false);
         }

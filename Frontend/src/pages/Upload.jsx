@@ -1,9 +1,11 @@
 import DashboardLayout from "../layout/DashboardLayout.jsx";
 import {useContext, useState} from "react";
 import {useAuth} from "@clerk/clerk-react";
+import {useNavigate} from "react-router-dom";
 import {UserCreditsContext} from "../context/UserCreditsContext.jsx";
 import {AlertCircle} from "lucide-react";
 import axios from "axios";
+import toast from "react-hot-toast";
 import {apiEndpoints} from "../util/apiEndpoints.js";
 import UploadBox from "../components/UploadBox.jsx";
 
@@ -14,6 +16,7 @@ const Upload = () => {
     const [message, setMessage] = useState("");
     const [messageType, setMessageType] = useState(""); //success or error
     const {getToken} = useAuth();
+    const navigate = useNavigate();
     const {credits, setCredits} = useContext(UserCreditsContext);
     const MAX_FILES = 5;
 
@@ -51,6 +54,19 @@ const Upload = () => {
             return;
         }
 
+        // Out of credits (or not enough for this many files) - stop right here,
+        // tell the user clearly, and take them straight to the page where they
+        // can buy more instead of leaving them stuck on a disabled button.
+        if (credits <= 0 || files.length > credits) {
+            toast.error(
+                credits <= 0
+                    ? "You're out of credits. Redirecting you to buy more..."
+                    : `You only have ${credits} credit${credits === 1 ? "" : "s"} left - not enough for ${files.length} files. Redirecting...`
+            );
+            setTimeout(() => navigate("/subscriptions"), 1500);
+            return;
+        }
+
         setUploading(true);
         setMessage("Uploading files...");
         setMessageType("info");
@@ -71,14 +87,25 @@ const Upload = () => {
             setFiles([]);
         }catch(error) {
             console.error('Error uploading files: ', error);
-            setMessage(error.response?.data?.message || "Error uploading files. Please try again.");
-            setMessageType("error");
+
+            // The backend also rejects uploads when credits run out mid-request
+            // (e.g. another tab/device used them first) - handle that the same way.
+            if (error.response?.status === 400 && /credit/i.test(error.response?.data?.message || "")) {
+                toast.error("You're out of credits. Redirecting you to buy more...");
+                setTimeout(() => navigate("/subscriptions"), 1500);
+            } else {
+                setMessage(error.response?.data?.message || "Error uploading files. Please try again.");
+                setMessageType("error");
+            }
         }finally {
             setUploading(false);
         }
     }
 
-    const isUploadDisabled = files.length === 0 || files.length > MAX_FILES || credits <= 0 || files.length > credits;
+    // Only genuinely blocking reasons (no files picked, or too many) disable the
+    // button outright. Running out of credits is handled inside handleUpload above
+    // so the click still fires and the person gets a clear message + redirect.
+    const isUploadDisabled = files.length === 0 || files.length > MAX_FILES;
 
 
     return (

@@ -18,6 +18,6 @@ public class FileMetadataDTO {
     private Long size;
     private String clerkId;
     private Boolean isPublic;
-    private String fileLocation;
+    private String fileUrl;
     private LocalDateTime uploadedAt;
 }

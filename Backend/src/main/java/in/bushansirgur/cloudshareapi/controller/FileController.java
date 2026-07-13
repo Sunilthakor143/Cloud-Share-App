@@ -5,19 +5,13 @@ import in.bushansirgur.cloudshareapi.dto.FileMetadataDTO;
 import in.bushansirgur.cloudshareapi.service.FileMetadataService;
 import in.bushansirgur.cloudshareapi.service.UserCreditsService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.parameters.P;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,15 +49,14 @@ public class FileController {
     }
 
     @GetMapping("/download/{id}")
-    public ResponseEntity<Resource> download(@PathVariable String id) throws IOException {
-        FileMetadataDTO downloadbleFile = fileMetadataService.getDownloadableFile(id);
-        Path path = Paths.get(downloadbleFile.getFileLocation());
-        Resource resource = new UrlResource(path.toUri());
+    public ResponseEntity<byte[]> download(@PathVariable String id) {
+        FileMetadataDTO downloadableFile = fileMetadataService.getDownloadableFile(id);
+        byte[] data = fileMetadataService.fetchFileBytes(downloadableFile.getFileUrl());
 
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachemnt; filename=\""+downloadbleFile.getName()+"\"")
-                .body(resource);
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\""+downloadableFile.getName()+"\"")
+                .body(data);
     }
 
     @DeleteMapping("/{id}")

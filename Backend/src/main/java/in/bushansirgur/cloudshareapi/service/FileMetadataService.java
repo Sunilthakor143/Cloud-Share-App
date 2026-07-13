@@ -1,24 +1,21 @@
 package in.bushansirgur.cloudshareapi.service;
 
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
 import in.bushansirgur.cloudshareapi.document.FileMetadataDocument;
 import in.bushansirgur.cloudshareapi.document.ProfileDocument;
 import in.bushansirgur.cloudshareapi.dto.FileMetadataDTO;
 import in.bushansirgur.cloudshareapi.repository.FileMetadataRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,8 +25,12 @@ public class FileMetadataService {
     private final ProfileService profileService;
     private final UserCreditsService userCreditsService;
     private final FileMetadataRepository fileMetadataRepository;
+    private final Cloudinary cloudinary;
 
-    public List<FileMetadataDTO> uploadFiles(MultipartFile files[]) throws IOException {
+    // Used only to stream file bytes back through our own backend on download.
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    public List<FileMetadataDTO> uploadFiles(MultipartFile[] files) throws IOException {
         ProfileDocument currentProfile = profileService.getCurrentProfile();
         List<FileMetadataDocument> savedFiles = new ArrayList<>();
 
@@ -37,16 +38,21 @@ public class FileMetadataService {
             throw new RuntimeException("Not enough credits to upload files. Please purchase more credits");
         }
 
-        Path uploadPath = Paths.get("upload").toAbsolutePath().normalize();
-        Files.createDirectories(uploadPath);
-
         for (MultipartFile file : files) {
-            String fileName = UUID.randomUUID()+"."+ StringUtils.getFilenameExtension(file.getOriginalFilename());
-            Path targetLocation = uploadPath.resolve(fileName);
-            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+            // "resource_type: auto" lets Cloudinary figure out image / video / raw (pdf, docx, zip, etc.)
+            // Files are namespaced per-user under cloudshare/<clerkId> for easier housekeeping in the dashboard.
+            @SuppressWarnings("unchecked")
+            Map<String, Object> uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+                    "resource_type", "auto",
+                    "folder", "cloudshare/" + currentProfile.getClerkId(),
+                    "use_filename", true,
+                    "unique_filename", true
+            ));
 
             FileMetadataDocument fileMetadata = FileMetadataDocument.builder()
-                    .fileLocation(targetLocation.toString())
+                    .fileUrl((String) uploadResult.get("secure_url"))
+                    .cloudinaryPublicId((String) uploadResult.get("public_id"))
+                    .resourceType((String) uploadResult.get("resource_type"))
                     .name(file.getOriginalFilename())
                     .size(file.getSize())
                     .type(file.getContentType())
@@ -59,15 +65,13 @@ public class FileMetadataService {
 
             savedFiles.add(fileMetadataRepository.save(fileMetadata));
         }
-        return savedFiles.stream().map(fileMetadataDocument -> mapToDTO(fileMetadataDocument))
-                .collect(Collectors.toList());
-
+        return savedFiles.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
 
     private FileMetadataDTO mapToDTO(FileMetadataDocument fileMetadataDocument) {
         return FileMetadataDTO.builder()
                 .id(fileMetadataDocument.getId())
-                .fileLocation(fileMetadataDocument.getFileLocation())
+                .fileUrl(fileMetadataDocument.getFileUrl())
                 .name(fileMetadataDocument.getName())
                 .size(fileMetadataDocument.getSize())
                 .type(fileMetadataDocument.getType())
@@ -84,18 +88,26 @@ public class FileMetadataService {
     }
 
     public FileMetadataDTO getPublicFile(String id) {
-        Optional<FileMetadataDocument> fileOptional = fileMetadataRepository.findById(id);
-        if (fileOptional.isEmpty() || !fileOptional.get().getIsPublic()) {
-            throw new RuntimeException("Unable to get the file");
-        }
+        FileMetadataDocument document = fileMetadataRepository.findById(id)
+                .filter(FileMetadataDocument::getIsPublic)
+                .orElseThrow(() -> new RuntimeException("Unable to get the file"));
 
-        FileMetadataDocument document = fileOptional.get();
         return mapToDTO(document);
     }
 
     public FileMetadataDTO getDownloadableFile(String id) {
-        FileMetadataDocument file = fileMetadataRepository.findById(id).orElseThrow(() -> new RuntimeException("File not found"));
+        FileMetadataDocument file = fileMetadataRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("File not found"));
         return mapToDTO(file);
+    }
+
+    /**
+     * Downloads the file bytes from Cloudinary on the server side and hands them back
+     * to the controller, so the browser only ever talks to our own backend — no CORS
+     * headaches with Cloudinary and no need for the frontend to change at all.
+     */
+    public byte[] fetchFileBytes(String fileUrl) {
+        return restTemplate.getForObject(fileUrl, byte[].class);
     }
 
     public void deleteFile(String id) {
@@ -105,14 +117,15 @@ public class FileMetadataService {
                     .orElseThrow(() -> new RuntimeException("File not found"));
 
             if (!file.getClerkId().equals(currentProfile.getClerkId())) {
-                throw new RuntimeException("File is not belong to current user");
+                throw new RuntimeException("File does not belong to current user");
             }
 
-            Path filePath = Paths.get(file.getFileLocation());
-            Files.deleteIfExists(filePath);
+            // Remove the actual file from Cloudinary too, not just our own database record.
+            cloudinary.uploader().destroy(file.getCloudinaryPublicId(),
+                    ObjectUtils.asMap("resource_type", file.getResourceType()));
 
             fileMetadataRepository.deleteById(id);
-        }catch (Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException("Error deleting the file");
         }
     }

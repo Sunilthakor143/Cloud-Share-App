@@ -23,6 +23,11 @@ public class FileMetadataDocument {
     private Long size;
     private String clerkId;
     private Boolean isPublic;
-    private String fileLocation;
+
+    // Cloudinary storage details (replaces old local-disk fileLocation)
+    private String fileUrl;            // secure_url returned by Cloudinary
+    private String cloudinaryPublicId; // needed to delete the file later
+    private String resourceType;       // "image" | "video" | "raw" - needed for delete/fetch
+
     private LocalDateTime uploadedAt;
 }
